@@ -1,82 +1,123 @@
 library(shiny)
 library(shinydashboard)
 
-#data <- read.csv(file.choose(), sep=";")
-#View(data)
+data <- read.csv(file.choose(), sep=";")
+View(data) #Посмотреть на данные
 
-data
+callid_vc <- data$Call.Id
+answer_vc <- data$Answered..Y.N.
+answer_vc <- c(answer_vc, "All")
+data_vc <- data$Date
+all_rows <- nrow(data)
 
-start_date <- readline(prompt = "Start: ") #включительно
-end_date <- readline(prompt = "End: ") #не включительно
-
-#выбранный интервал пользователя
-data_user <- data[data$Date == start_date, ]
-View(data_user)
-
-#считаем метрику MAU
-mau <- nrow(data_user)
-mau
-
-#Константые значения 
-choices_data_start <- data$Date
-
-
-# ^^^ Логика с данными 
+# ^^^ Считать данные
 
 ui <- dashboardPage(skin="purple",
-    dashboardHeader(title="Контактный центр"),
-    dashboardSidebar(
-      sidebarMenu(
-        br(),
-        menuItem("Менеджер", icon=icon("list-alt")),
-        menuItem("Аналитик", icon=icon("rocket")),
-        selectInput("date_user_start", "Выберете начало периода:", choices_data_start), 
-        selectInput("date_user_end", "Выберете конец периода:", choices_data_start), #НЕ ВКЛЮЧИТЕЛЬНО
-      )
-    ),
-    dashboardBody(
-      fluidRow(
-        column(width=12,
-               infoBoxOutput("ibox", width=2),
-               #infoBox("MAU", uiOutput("mau"), col='red', icon=icon("user"), width=2),
-               infoBox("CR (кц)%", paste0('20%'), col='red', icon=icon("percent"), width=2),
-               infoBox("Потеряно, т. р.", 12000, col='red', icon=icon("minus"), width=2), 
-               infoBox("AvgTalk, сек.", 325, col='red', icon=icon("phone"), width=2),
-               infoBox("Потрачено, т. р.", 12349, col='red', icon=icon("wallet"), width=2),
-               infoBox("Заработано, т. р.", 1235200, col='red', icon=icon("wallet"), width=2)
-        )
-      ),
-      fluidRow(
-          box(title="DAU", status="primary", solidHeader = T, plotOutput("histogram")),
-          box(title="Среднее время работы оператора в течение месяца", status="primary", solidHeader = T, plotOutput("histogram"))
-      ),
-      fluidRow(
-        box(title="Количество звонков по категориям за месяц", status="primary", solidHeader = T, plotOutput("histogram"))
-      ),
-      fluidRow(
-        #Здесь нужно нарисовать круговую диаграмму
-        #---
-        #---
-      )
+                    
+  dashboardHeader(title = "Контактный центр"),
+   
+  dashboardSidebar(sidebarMenu(
+    
+    br(),
+    menuItem("Менеджер", icon=icon("list-alt")),
+    menuItem("Аналитик", icon=icon("rocket"), badgeLabel = "New", badgeColor = "green")
+    
     )
+  ),
+  dashboardBody(
+    
+    fluidRow(column(width=12,
+                    infoBoxOutput("mau", width=2),
+                    infoBoxOutput("cr", width=2),
+                    infoBoxOutput("lost", width=2),
+                    infoBoxOutput("avgtalk", width=2),
+                    infoBoxOutput("spend", width=2),
+                    infoBoxOutput("earned", width=2)
+            )
+
+    ),
+    
+    fluidRow(
+      
+      column(4, 
+             selectInput("data", "Выберете дату: ", choices = data_vc)
+      ),
+      
+      column(4, 
+             selectInput("typecall", "Выберете тип вызова (Поле Answered..Y.N.): ", choices = answer_vc)
+      )
+      
+    ),
+    
+    mainPanel(
+      DT::dataTableOutput("dat")
+    )
+    
   )
+)
 
-
-
-server <- function(input, output){
+server <- function(input, output) {
   
-  #output$ibox <- renderInfoBox({
-  #  infoBox(
-  #    "MAU",
-  #    5,
-  #    icon = icon("credit-card"),
-  #    width=2
-  #  )
-  #})
+  output$dat <- DT::renderDataTable(DT::datatable({
+    data_us <- data
+    
+    if (input$typecall == "All"){
+      return_data <- data_us[data_us$Date == input$data, ]
+    } else {
+      return_data <- data_us[data_us$Date == input$data & data_us$Answered..Y.N. == input$typecall, ]
+    }
+    
+    mau_us <- nrow(return_data)
+    
+    output$mau <- renderInfoBox({
+      infoBox("MAU", mau_us, col='red', icon=icon("user"), fill=TRUE, width=2)
+    })
+  
+    if (input$typecall == "Y"){
+      output$cr <- renderInfoBox({
+        infoBox("CR, %", (mau_us / all_rows)*100 , col='red', icon=icon("percent"), fill=TRUE, width=2)
+      })
+    }
+    else{
+      output$cr <- renderInfoBox({
+        infoBox("cr", "% отвеченных", col='red', icon=icon("percent"), fill=TRUE, width=2)
+      })
+    }
+    
+    if (input$typecall == "N"){
+      output$lost <- renderInfoBox({
+        infoBox("Потеряно, руб.", nrow(return_data) * 350, col='red', icon=icon("minus"), fill=TRUE, width=2)
+      })
+    }
+    else{
+      output$lost <- renderInfoBox({
+        infoBox("Потеряно, руб.", "Для неотвеченных", col='red', icon=icon("minus"), fill=TRUE, width=2)
+      })
+    }
+    
+    output$avgtalk <- renderInfoBox({
+      infoBox("AvgTalk/Line",round(mean(return_data$Time), digits = 4), col='red', icon=icon("phone"), fill=TRUE, width=2)
+      
+    })
+    
+    output$spend <- renderInfoBox({
+      infoBox("Потрачено, руб.", nrow(return_data) * 350, col='red', icon=icon("wallet"), fill=TRUE, width=2)
+    })
+    
+    if (input$typecall == "Y"){
+      output$earned <- renderInfoBox({
+        infoBox("Заработано, руб.", nrow(return_data) * 700 * (mau_us / all_rows)*100, col='red', icon=icon("wallet"), fill=TRUE, width=2)
+      })
+    } else{
+      output$earned <- renderInfoBox({
+        infoBox("Заработано, руб.", "Для отвеченных", col='red', icon=icon("wallet"), fill=TRUE, width=2)
+      })
+    }
+    
+    return_data
+  }), server = FALSE)
   
 }
 
-shinyApp(ui = ui, server = server)
-
-
+shinyApp(ui, server)
 
