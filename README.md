@@ -1,1 +1,3 @@
-# contact_center_shiny_dashboard
+# В процессе разработки 
+
+https://miro.com/app/board/uXjVMu1mo-w=/
